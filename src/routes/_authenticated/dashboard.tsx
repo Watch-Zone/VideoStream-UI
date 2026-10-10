@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Trash2, Upload } from "lucide-react";
+import { useState } from "react";
+import { Pencil, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { deleteVideo, getMyVideos } from "@/lib/videos.functions";
 import { formatDuration, formatViews } from "@/lib/format";
 import { TimeAgo } from "@/components/TimeAgo";
+import { EditVideoDialog } from "@/components/EditVideoDialog";
 import type { VideoDTO } from "@/lib/video-types";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -28,6 +30,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const queryClient = useQueryClient();
+  const [editingVideo, setEditingVideo] = useState<VideoDTO | null>(null);
   const { data, isPending } = useQuery({
     queryKey: ["my-videos"],
     queryFn: () => getMyVideos() as Promise<VideoDTO[]>,
@@ -100,18 +103,40 @@ function DashboardPage() {
                   {video.visibility}
                 </Badge>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={`Delete ${video.title}`}
-                disabled={remove.isPending}
-                onClick={() => remove.mutate(video.id)}
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Edit ${video.title}`}
+                  onClick={() => setEditingVideo(video)}
+                >
+                  <Pencil className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Delete ${video.title}`}
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to delete "${video.title}"?`)) {
+                      remove.mutate(video.id);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
+      )}
+
+      {editingVideo && (
+        <EditVideoDialog
+          video={editingVideo}
+          open={Boolean(editingVideo)}
+          onOpenChange={(open) => !open && setEditingVideo(null)}
+        />
       )}
     </AppShell>
   );

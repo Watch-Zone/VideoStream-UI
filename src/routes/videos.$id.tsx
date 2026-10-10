@@ -1,7 +1,7 @@
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { ThumbsUp, Share2 } from "lucide-react";
+import { ThumbsUp, Share2, Pencil, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,8 +10,11 @@ import { toast } from "sonner";
 import { useSession } from "@/hooks/use-session";
 import { formatViews, formatDuration } from "@/lib/format";
 import { TimeAgo } from "@/components/TimeAgo";
+import { EditVideoDialog } from "@/components/EditVideoDialog";
 import {
   addComment,
+  deleteComment,
+  deleteVideo,
   getComments,
   getLikeCount,
   getMyLike,
@@ -112,6 +115,27 @@ function WatchPage() {
   if (!data) return null;
   const { video, related } = data;
 
+  const isOwner = Boolean(user && video.owner_id && user.id === video.owner_id);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteVideo({ data: { id } }),
+    onSuccess: () => {
+      toast.success("Video deleted");
+      navigate({ to: "/" });
+    },
+    onError: () => toast.error("Could not delete this video."),
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) => deleteComment({ data: { id: commentId } }),
+    onSuccess: () => {
+      toast.success("Comment deleted");
+      void queryClient.invalidateQueries({ queryKey: ["comments", id] });
+    },
+    onError: (err: any) => toast.error(err?.message || "Could not delete comment."),
+  });
+
   return (
     <AppShell>
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -177,6 +201,32 @@ function WatchPage() {
               >
                 <Share2 className="mr-2 h-4 w-4" /> Share
               </Button>
+
+              {isOwner && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setEditOpen(true)}
+                  >
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="rounded-full"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to delete this video? This cannot be undone.")) {
+                        deleteMutation.mutate();
+                      }
+                    }}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Delete
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -239,17 +289,31 @@ function WatchPage() {
 
             <ul className="mt-6 space-y-5">
               {(comments.data ?? []).map((comment) => (
-                <li key={comment.id} className="flex gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold uppercase">
-                    {comment.author_name.slice(0, 2)}
-                  </span>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">{comment.author_name}</span>{" "}
-                      <TimeAgo date={comment.created_at} />
-                    </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm">{comment.body}</p>
+                <li key={comment.id} className="group flex items-start justify-between gap-3">
+                  <div className="flex gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold uppercase">
+                      {comment.author_name.slice(0, 2)}
+                    </span>
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">{comment.author_name}</span>{" "}
+                        <TimeAgo date={comment.created_at} />
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm">{comment.body}</p>
+                    </div>
                   </div>
+                  {user && (user.id === comment.user_id || isOwner) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+                      title="Delete comment"
+                      disabled={deleteCommentMutation.isPending}
+                      onClick={() => deleteCommentMutation.mutate(comment.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -288,6 +352,14 @@ function WatchPage() {
           ))}
         </aside>
       </div>
+
+      {isOwner && (
+        <EditVideoDialog
+          video={video}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+      )}
     </AppShell>
   );
 }

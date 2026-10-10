@@ -6,15 +6,12 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-const isVercelBuild = process.env.VERCEL === "1" || process.env.VERCEL === "true";
+const isVercelBuild = process.env["VERCEL"] === "1" || process.env["VERCEL"] === "true";
 
 export default defineConfig({
   nitro: {
     ...(isVercelBuild ? { preset: "vercel" } : {}),
-    externals: {
-      inline: [/@supabase\/.*/, "tslib", "@supabase/supabase-js", "@supabase/functions-js"],
-    },
-  },
+  } as any,
   vite: {
     ssr: {
       noExternal: [/@supabase\/.*/, "tslib", "@supabase/supabase-js", "@supabase/functions-js"],

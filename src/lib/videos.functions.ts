@@ -151,3 +151,55 @@ export const addComment = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const updateVideo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) =>
+    z
+      .object({
+        id: z.string().uuid(),
+        title: z.string().min(1).max(140).optional(),
+        description: z.string().max(5000).optional(),
+        tags: z.array(z.string().max(40)).max(20).optional(),
+        visibility: z.enum(["public", "unlisted", "private"]).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("videos")
+      .update({
+        ...(data.title !== undefined ? { title: data.title } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.tags !== undefined ? { tags: data.tags } : {}),
+        ...(data.visibility !== undefined ? { visibility: data.visibility } : {}),
+      })
+      .eq("id", data.id)
+      .eq("owner_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const deleteComment = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: comment, error: fetchErr } = await context.supabase
+      .from("comments")
+      .select("id, user_id, video_id, videos(owner_id)")
+      .eq("id", data.id)
+      .maybeSingle();
+
+    if (fetchErr || !comment) throw new Error("Comment not found.");
+
+    const isAuthor = comment.user_id === context.userId;
+    const isVideoOwner = (comment.videos as any)?.owner_id === context.userId;
+
+    if (!isAuthor && !isVideoOwner) {
+      throw new Error("You are not authorized to delete this comment.");
+    }
+
+    const { error } = await context.supabase.from("comments").delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });

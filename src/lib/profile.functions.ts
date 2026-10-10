@@ -82,3 +82,69 @@ export const updateMyProfile = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const getIsSubscribed = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => z.object({ channelId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const { data: sub } = await context.supabase
+      .from("subscriptions")
+      .select("channel_id")
+      .eq("subscriber_id", context.userId)
+      .eq("channel_id", data.channelId)
+      .maybeSingle();
+    return { isSubscribed: Boolean(sub) };
+  });
+
+export const toggleSubscription = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((input: unknown) => z.object({ channelId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    if (context.userId === data.channelId) {
+      throw new Error("You cannot subscribe to yourself.");
+    }
+    const { data: existing } = await context.supabase
+      .from("subscriptions")
+      .select("channel_id")
+      .eq("subscriber_id", context.userId)
+      .eq("channel_id", data.channelId)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await context.supabase
+        .from("subscriptions")
+        .delete()
+        .eq("subscriber_id", context.userId)
+        .eq("channel_id", data.channelId);
+      if (error) throw new Error(error.message);
+      return { subscribed: false };
+    }
+
+    const { error } = await context.supabase
+      .from("subscriptions")
+      .insert({ subscriber_id: context.userId, channel_id: data.channelId });
+    if (error) throw new Error(error.message);
+    return { subscribed: true };
+  });
+
+export const getMySubscriptions = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data: subs, error } = await context.supabase
+      .from("subscriptions")
+      .select("channel_id")
+      .eq("subscriber_id", context.userId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+
+    if (error) throw new Error(error.message);
+    const channelIds = (subs ?? []).map((s) => s.channel_id);
+    if (channelIds.length === 0) return [];
+
+    const { data: channels } = await context.supabase
+      .from("profiles")
+      .select("id, display_name, handle, avatar_url")
+      .in("id", channelIds);
+
+    return channels ?? [];
+  });

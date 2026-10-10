@@ -1,11 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { queryOptions, useSuspenseQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { Users } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { HeroBanner } from "@/components/HeroBanner";
 import { Rail } from "@/components/VideoCard";
 import { Button } from "@/components/ui/button";
 import { getFeed } from "@/lib/videos.functions";
+import { getMySubscriptions } from "@/lib/profile.functions";
+import { useSession } from "@/hooks/use-session";
 
 const feedQuery = queryOptions({ queryKey: ["feed"], queryFn: () => getFeed() });
 
@@ -38,6 +40,12 @@ export const Route = createFileRoute("/")({
 
 function FeedPage() {
   const { data } = useSuspenseQuery(feedQuery);
+  const { user } = useSession();
+  const { data: subscriptions } = useQuery({
+    queryKey: ["my-subscriptions", user?.id],
+    queryFn: () => getMySubscriptions(),
+    enabled: Boolean(user),
+  });
   const featured = data[0];
   const trending = [...data].sort((a, b) => Number(b.view_count) - Number(a.view_count));
 
@@ -53,6 +61,46 @@ function FeedPage() {
       )}
 
       <div className="relative z-10 mx-auto -mt-8 max-w-[1600px] px-4 sm:px-6">
+        {subscriptions && subscriptions.length > 0 && (
+          <section className="mb-8" aria-label="Subscriptions rail">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-bold tracking-tight text-foreground/90">
+                Subscriptions
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                {subscriptions.length} channel{subscriptions.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 overflow-x-auto pb-2 scrollbar-none">
+              {subscriptions.map((channel: any) => (
+                <Link
+                  key={channel.id}
+                  to="/profile/$userId"
+                  params={{ userId: channel.id }}
+                  className="group flex flex-col items-center gap-1.5 shrink-0 transition-transform hover:scale-105"
+                >
+                  <div className="relative h-14 w-14 rounded-full p-[2px] ring-2 ring-primary/40 group-hover:ring-primary transition-all">
+                    {channel.avatar_url ? (
+                      <img
+                        src={channel.avatar_url}
+                        alt={channel.display_name}
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold uppercase text-foreground">
+                        {(channel.display_name || "C").slice(0, 2)}
+                      </div>
+                    )}
+                  </div>
+                  <span className="max-w-[76px] truncate text-center text-xs font-medium text-foreground/80 group-hover:text-foreground">
+                    {channel.display_name || "Creator"}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         <Rail title="Trending now" videos={trending.slice(0, 12)} />
         <Rail title="New releases" videos={data.slice(0, 12)} wide />
         <Rail title="Because you watch on StreamHub" videos={[...data].reverse().slice(0, 12)} />
